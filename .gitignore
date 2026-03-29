@@ -1,0 +1,43 @@
+# Environment
+.env
+.env.*
+!.env.example
+.envrc
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+
+# Tooling
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.tox/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+
+# Django
+db.sqlite3
+*.sqlite3
+staticfiles/
+media/
+*.log
+
+# Local app data
+var/
+vaults/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp

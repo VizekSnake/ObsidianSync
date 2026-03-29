@@ -1,0 +1,70 @@
+services:
+  web:
+    build:
+      context: .
+    container_name: obsidian-sync-web
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./var:/app/var
+      - ${VAULT_HOST_PATH:-./vaults}:/vaults
+    develop:
+      watch:
+        - action: sync
+          path: ./backups
+          target: /app/backups
+          ignore:
+            - __pycache__/
+            - migrations/__pycache__/
+        - action: sync
+          path: ./config
+          target: /app/config
+          ignore:
+            - __pycache__/
+        - action: sync
+          path: ./templates
+          target: /app/templates
+        - action: sync
+          path: ./manage.py
+          target: /app/manage.py
+        - action: rebuild
+          path: ./pyproject.toml
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: .
+    container_name: obsidian-sync-scheduler
+    command: python manage.py run_snapshot_scheduler --interval-seconds 60
+    env_file:
+      - .env
+    volumes:
+      - ./var:/app/var
+      - ${VAULT_HOST_PATH:-./vaults}:/vaults
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./backups
+          target: /app/backups
+          ignore:
+            - __pycache__/
+            - migrations/__pycache__/
+        - action: sync+restart
+          path: ./config
+          target: /app/config
+          ignore:
+            - __pycache__/
+        - action: sync+restart
+          path: ./templates
+          target: /app/templates
+        - action: sync+restart
+          path: ./manage.py
+          target: /app/manage.py
+        - action: rebuild
+          path: ./pyproject.toml
+    depends_on:
+      - web
+    restart: unless-stopped

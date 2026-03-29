@@ -1,0 +1,75 @@
+{% extends "admin/base.html" %}
+{% load i18n static %}
+
+{% block title %}Log in | {{ site_title|default:_("Django site admin") }}{% endblock %}
+
+{% block branding %}
+  {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+  <div style="min-height: calc(100vh - 180px); display:grid; place-items:center;">
+    <section style="width:min(100%, 440px); border:1px solid var(--color-base-200); border-radius:6px; background:var(--color-base-50); box-shadow:0 10px 24px rgba(15,23,42,.08); overflow:hidden;">
+      <header style="padding:24px 24px 18px; border-bottom:1px solid var(--color-base-200);">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--color-base-500);">ObsidianSync</div>
+        <h1 style="margin:8px 0 0; font-size:28px; line-height:1.05;">Admin login</h1>
+        <p style="margin:10px 0 0; color:var(--color-base-500);">Wejście do panelu zarządzania vaultami, snapshotami i historią zmian.</p>
+      </header>
+
+      <div style="padding:24px;">
+        {% if form.errors and not form.non_field_errors %}
+          <div style="margin-bottom:16px; border:1px solid var(--color-red-200); background:var(--color-red-50); color:var(--color-red-700); border-radius:6px; padding:12px 14px;">
+            {% blocktranslate count counter=form.errors.items|length %}Please correct the error below.{% plural %}Please correct the errors below.{% endblocktranslate %}
+          </div>
+        {% endif %}
+
+        {% if form.non_field_errors %}
+          {% for error in form.non_field_errors %}
+            <div style="margin-bottom:16px; border:1px solid var(--color-red-200); background:var(--color-red-50); color:var(--color-red-700); border-radius:6px; padding:12px 14px;">
+              {{ error }}
+            </div>
+          {% endfor %}
+        {% endif %}
+
+        {% if user.is_authenticated %}
+          <div style="margin-bottom:16px; border:1px solid var(--color-yellow-200); background:var(--color-yellow-50); color:var(--color-yellow-700); border-radius:6px; padding:12px 14px;">
+            {% blocktranslate trimmed %}
+              You are authenticated as {{ username }}, but are not authorized to access this page.
+            {% endblocktranslate %}
+          </div>
+        {% endif %}
+
+        <form action="{{ app_path }}" method="post" id="login-form">
+          {% csrf_token %}
+
+          <div style="display:grid; gap:16px;">
+            <div>
+              <label for="{{ form.username.id_for_label }}" style="display:block; margin-bottom:8px; font-size:13px; font-weight:600;">{{ form.username.label }}</label>
+              {{ form.username }}
+            </div>
+
+            <div>
+              <label for="{{ form.password.id_for_label }}" style="display:block; margin-bottom:8px; font-size:13px; font-weight:600;">{{ form.password.label }}</label>
+              {{ form.password }}
+              <input type="hidden" name="next" value="{{ next }}">
+            </div>
+          </div>
+
+          {% url 'admin_password_reset' as password_reset_url %}
+          {% if password_reset_url %}
+            <div style="margin-top:14px; font-size:13px;">
+              <a href="{{ password_reset_url }}">{% translate 'Forgotten your password or username?' %}</a>
+            </div>
+          {% endif %}
+
+          <div style="margin-top:20px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+            <div style="font-size:13px; color:var(--color-base-500);">Use your Django admin credentials.</div>
+            <button type="submit" style="border:1px solid var(--color-primary-600); background:rgb(var(--color-primary-600)); color:white; border-radius:6px; padding:10px 16px; font:inherit; cursor:pointer;">
+              {% translate 'Log in' %}
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+{% endblock %}

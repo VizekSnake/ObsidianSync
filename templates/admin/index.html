@@ -1,0 +1,89 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block title %}
+  {% if subtitle %}
+    {{ subtitle }} |
+  {% endif %}
+  {{ title }} | {{ site_title|default:_("Django site admin") }}
+{% endblock %}
+
+{% block branding %}
+  {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+  <div style="display:grid; gap:16px;">
+    <div style="display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+      <section style="background:var(--color-base-50); border:1px solid var(--color-base-200); border-radius:6px; padding:18px;">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--color-base-500);">Vaults</div>
+        <div style="font-size:32px; font-weight:700; margin-top:8px;">{{ dashboard_metrics.vaults }}</div>
+      </section>
+      <section style="background:var(--color-base-50); border:1px solid var(--color-base-200); border-radius:6px; padding:18px;">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--color-base-500);">Snapshots</div>
+        <div style="font-size:32px; font-weight:700; margin-top:8px;">{{ dashboard_metrics.snapshots }}</div>
+      </section>
+      <section style="background:var(--color-base-50); border:1px solid var(--color-base-200); border-radius:6px; padding:18px;">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--color-base-500);">Documents</div>
+        <div style="font-size:32px; font-weight:700; margin-top:8px;">{{ dashboard_metrics.documents }}</div>
+      </section>
+      <section style="background:var(--color-base-50); border:1px solid var(--color-base-200); border-radius:6px; padding:18px;">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--color-base-500);">Failed snapshots</div>
+        <div style="font-size:32px; font-weight:700; margin-top:8px;">{{ dashboard_failed_snapshots }}</div>
+      </section>
+    </div>
+
+    <div style="display:grid; gap:16px; grid-template-columns:2fr 1.2fr;">
+      <section style="background:var(--color-base-50); border:1px solid var(--color-base-200); border-radius:6px; padding:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+          <div>
+            <div style="font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--color-base-500);">Vault overview</div>
+            <h2 style="margin:6px 0 0; font-size:18px;">Configured vaults</h2>
+          </div>
+          <a href="{% url 'admin:backups_vault_changelist' %}">Open vaults</a>
+        </div>
+        <div style="display:grid; gap:10px;">
+          {% for vault in dashboard_vaults %}
+            <div style="display:flex; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--color-base-200);">
+              <div>
+                <div style="font-weight:600;">{{ vault.name }}</div>
+                <div style="font-size:13px; color:var(--color-base-500);">{{ vault.source_path }}</div>
+              </div>
+              <div style="text-align:right; font-size:13px; color:var(--color-base-500);">
+                <div>{{ vault.snapshot_total }} snapshots</div>
+                <div>{{ vault.document_total }} documents</div>
+              </div>
+            </div>
+          {% empty %}
+            <div style="color:var(--color-base-500);">No vaults configured yet.</div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section style="background:var(--color-base-50); border:1px solid var(--color-base-200); border-radius:6px; padding:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+          <div>
+            <div style="font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--color-base-500);">Activity</div>
+            <h2 style="margin:6px 0 0; font-size:18px;">Recent snapshots</h2>
+          </div>
+          <a href="{% url 'admin:backups_backupsnapshot_changelist' %}">All snapshots</a>
+        </div>
+        <div style="display:grid; gap:10px;">
+          {% for snapshot in dashboard_snapshots %}
+            <div style="padding:12px 0; border-bottom:1px solid var(--color-base-200);">
+              <div style="display:flex; justify-content:space-between; gap:12px;">
+                <div style="font-weight:600;">{{ snapshot.vault.name }}</div>
+                <div style="font-size:13px; color:var(--color-base-500);">{{ snapshot.get_status_display }}</div>
+              </div>
+              <div style="font-size:13px; color:var(--color-base-500); margin-top:4px;">
+                {{ snapshot.created_at }} · {{ snapshot.file_count }} files
+              </div>
+            </div>
+          {% empty %}
+            <div style="color:var(--color-base-500);">No snapshots yet.</div>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+  </div>
+{% endblock %}

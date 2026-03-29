@@ -1,0 +1,264 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title }}{% endblock %}
+
+{% block branding %}
+  {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+  <div style="display:grid; gap:16px;">
+    <header style="display:flex; justify-content:space-between; gap:12px; align-items:start; flex-wrap:wrap;">
+      <div>
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--color-base-500);">Revision graph</div>
+        <h1 style="margin:8px 0 0; font-size:28px;">{{ document.relative_path }}</h1>
+        <p style="margin:10px 0 0; color:var(--color-base-500);">Vault: {{ document.vault.name }} · Active branch: {{ document.active_branch }}</p>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a href="{% url 'admin:backups_vaultdocument_change' document.pk %}">Back to document</a>
+        <a href="{% url 'admin:backups_documentrevision_changelist' %}?document__id__exact={{ document.pk }}">Open revisions</a>
+      </div>
+    </header>
+
+    <section style="border:1px solid var(--color-base-200); border-radius:6px; background:var(--color-base-50); overflow:hidden;">
+      <div style="padding:14px 16px; border-bottom:1px solid var(--color-base-200); display:flex; justify-content:space-between; gap:12px; align-items:center;">
+        <div style="font-size:13px; color:var(--color-base-500);">Graph view for this single document</div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <label for="branch-filter" style="font-size:12px; color:var(--color-base-500);">Branch</label>
+          <select id="branch-filter" style="font-size:12px; min-width:180px; padding:6px 10px; border:1px solid var(--color-base-200); border-radius:6px; background:var(--color-base-50); color:var(--color-base-700);">
+            <option value="__all__">All branches</option>
+          </select>
+          <div style="font-size:12px; color:var(--color-base-500);" id="graph-meta"></div>
+        </div>
+      </div>
+      <div style="overflow:auto; max-height:75vh;">
+        <div id="revision-graph" style="min-width:980px; position:relative; padding:20px 20px 28px;"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (() => {
+      const payload = {{ graph_payload|safe }};
+      const container = document.getElementById("revision-graph");
+      const meta = document.getElementById("graph-meta");
+      const branchFilter = document.getElementById("branch-filter");
+      const nodes = payload.nodes;
+      const branches = payload.branches || [];
+      const laneColors = ["#2563eb", "#0891b2", "#16a34a", "#d97706", "#dc2626", "#9333ea"];
+      const laneXBase = 40;
+      const laneXGap = 34;
+      const rowHeight = 148;
+      const rowPaddingTop = 18;
+      const cardLeft = 170;
+      const cardWidth = 720;
+      const gutterWidth = 132;
+      const topOffset = 12;
+
+      branches.forEach((branch) => {
+        const option = document.createElement("option");
+        option.value = branch;
+        option.textContent = branch;
+        if (branch === payload.document.active_branch) {
+          option.textContent = `${branch} (active)`;
+        }
+        branchFilter.appendChild(option);
+      });
+
+      const makeLine = (svg, x1, y1, x2, y2, color, dashed = false, opacity = 0.32) => {
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", String(x1));
+        line.setAttribute("y1", String(y1));
+        line.setAttribute("x2", String(x2));
+        line.setAttribute("y2", String(y2));
+        line.setAttribute("stroke", color);
+        line.setAttribute("stroke-width", "2");
+        line.setAttribute("stroke-opacity", String(opacity));
+        if (dashed) {
+          line.setAttribute("stroke-dasharray", "6 6");
+        }
+        svg.appendChild(line);
+      };
+
+      const makeCurve = (svg, fromX, fromY, toX, toY, color, dashed = false, opacity = 0.5) => {
+        const dx = Math.max(32, Math.abs(toX - fromX) * 0.55);
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const d = `M ${fromX} ${fromY} C ${fromX + dx} ${fromY}, ${toX - dx} ${toY}, ${toX} ${toY}`;
+        path.setAttribute("d", d);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", color);
+        path.setAttribute("stroke-width", "2");
+        path.setAttribute("stroke-opacity", String(opacity));
+        if (dashed) {
+          path.setAttribute("stroke-dasharray", "6 6");
+        }
+        svg.appendChild(path);
+      };
+
+      const render = (selectedBranch) => {
+        const visibleNodes = selectedBranch === "__all__"
+          ? nodes
+          : nodes.filter((node) => node.branch === selectedBranch);
+
+        container.innerHTML = "";
+
+        if (!visibleNodes.length) {
+          meta.textContent = "0 revisions";
+          container.innerHTML = '<div style="padding:20px; color:var(--color-base-500);">No revisions for this branch.</div>';
+          return;
+        }
+
+        meta.textContent = `${visibleNodes.length} revisions`;
+
+        const localLaneMap = new Map();
+        visibleNodes.forEach((node) => {
+          if (!localLaneMap.has(node.branch)) {
+            localLaneMap.set(node.branch, localLaneMap.size);
+          }
+          if (node.merge_source_branch && !localLaneMap.has(node.merge_source_branch)) {
+            localLaneMap.set(node.merge_source_branch, localLaneMap.size);
+          }
+        });
+
+        const visibleIds = new Set(visibleNodes.map((node) => node.id));
+        const width = cardLeft + cardWidth + 40;
+        const height = topOffset + visibleNodes.length * rowHeight;
+        container.style.width = `${width}px`;
+        container.style.height = `${height}px`;
+
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("width", width);
+        svg.setAttribute("height", height);
+        svg.style.position = "absolute";
+        svg.style.inset = "0";
+        container.appendChild(svg);
+
+        for (let lane = 0; lane < localLaneMap.size; lane += 1) {
+          const x = laneXBase + lane * laneXGap;
+          makeLine(svg, x, topOffset, x, height - 18, laneColors[lane % laneColors.length], false, 0.14);
+        }
+
+        visibleNodes.forEach((node, index) => {
+          const lane = localLaneMap.get(node.branch) ?? 0;
+          const color = laneColors[lane % laneColors.length];
+          const y = topOffset + index * rowHeight + rowPaddingTop;
+          const x = laneXBase + lane * laneXGap;
+
+          const row = document.createElement("div");
+          row.style.position = "absolute";
+          row.style.left = "0";
+          row.style.right = "0";
+          row.style.top = `${topOffset + index * rowHeight}px`;
+          row.style.height = `${rowHeight}px`;
+          container.appendChild(row);
+
+          const laneLabel = document.createElement("div");
+          laneLabel.textContent = node.branch;
+          laneLabel.style.position = "absolute";
+          laneLabel.style.left = `${x + 18}px`;
+          laneLabel.style.top = `${rowPaddingTop - 9}px`;
+          laneLabel.style.fontSize = "12px";
+          laneLabel.style.fontWeight = "600";
+          laneLabel.style.color = "var(--color-base-600)";
+          laneLabel.style.whiteSpace = "nowrap";
+          row.appendChild(laneLabel);
+
+          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          circle.setAttribute("cx", x);
+          circle.setAttribute("cy", y);
+          circle.setAttribute("r", "8");
+          circle.setAttribute("fill", node.is_binary ? "#d97706" : color);
+          circle.setAttribute("stroke", "white");
+          circle.setAttribute("stroke-width", "3");
+          svg.appendChild(circle);
+
+          if (node.parent_id && visibleIds.has(node.parent_id)) {
+            const parentNode = visibleNodes.find((candidate) => candidate.id === node.parent_id);
+            if (parentNode) {
+              const parentLane = localLaneMap.get(parentNode.branch) ?? 0;
+              const parentX = laneXBase + parentLane * laneXGap;
+              const parentIndex = visibleNodes.findIndex((candidate) => candidate.id === node.parent_id);
+              const parentY = topOffset + parentIndex * rowHeight + rowPaddingTop;
+              if (parentX === x) {
+                makeLine(svg, x, y + 8, parentX, parentY - 8, color, false, 0.34);
+              } else {
+                makeCurve(svg, x, y + 8, parentX, parentY - 8, color, false, 0.42);
+              }
+            }
+          }
+
+          if (node.merge_parent_id && visibleIds.has(node.merge_parent_id)) {
+            const mergeParentNode = visibleNodes.find((candidate) => candidate.id === node.merge_parent_id);
+            if (mergeParentNode) {
+              const mergeParentLane = localLaneMap.get(mergeParentNode.branch) ?? 0;
+              const mergeParentX = laneXBase + mergeParentLane * laneXGap;
+              const mergeParentIndex = visibleNodes.findIndex((candidate) => candidate.id === node.merge_parent_id);
+              const mergeParentY = topOffset + mergeParentIndex * rowHeight + rowPaddingTop;
+              makeCurve(svg, x, y + 8, mergeParentX, mergeParentY - 8, "#7c3aed", true, 0.55);
+            }
+          }
+
+          const card = document.createElement("a");
+          card.href = node.url;
+          card.style.position = "absolute";
+          card.style.left = `${cardLeft}px`;
+          card.style.top = "0";
+          card.style.width = `${cardWidth}px`;
+          card.style.minHeight = "126px";
+          card.style.padding = "14px 16px";
+          card.style.border = "1px solid var(--color-base-200)";
+          card.style.borderRadius = "6px";
+          card.style.background = "var(--color-base-50)";
+          card.style.boxShadow = "0 1px 2px rgba(15,23,42,.04)";
+          card.style.textDecoration = "none";
+          card.style.color = "inherit";
+          row.appendChild(card);
+
+          const badges = [];
+          badges.push(
+            `<span style="font-size:11px; padding:3px 8px; border-radius:6px; color:${color}; background:color-mix(in srgb, ${color} 12%, transparent); border:1px solid color-mix(in srgb, ${color} 18%, transparent);">${node.branch}</span>`,
+          );
+          if (node.branch === payload.document.active_branch) {
+            badges.push(
+              '<span style="font-size:11px; padding:3px 8px; border-radius:999px; background:rgb(var(--color-success-100)); color:rgb(var(--color-success-700)); border:1px solid rgb(var(--color-success-200));">active</span>',
+            );
+          }
+          badges.push(
+            `<span style="font-size:11px; padding:3px 8px; border-radius:6px; background:var(--color-base-100); color:var(--color-base-700); border:1px solid var(--color-base-200);">parent ${node.parent_label}</span>`,
+          );
+          if (node.merge_parent_label) {
+            badges.push(
+              `<span style="font-size:11px; padding:3px 8px; border-radius:6px; background:rgba(124,58,237,.08); color:#6d28d9; border:1px solid rgba(124,58,237,.16);">merge ${node.merge_parent_label}</span>`,
+            );
+          }
+          badges.push(
+            `<span style="font-size:11px; padding:3px 8px; border-radius:6px; background:var(--color-base-100); color:var(--color-base-500); border:1px solid var(--color-base-200);">r${node.revision_index}</span>`,
+          );
+
+          const summary = node.summary.replaceAll("\n", "<br>");
+          const operationLabel = node.operation === "merge" ? "Merge commit" : node.operation === "restore" ? "Restore commit" : node.operation === "branch_create" ? "Branch created" : "Snapshot revision";
+
+          card.innerHTML = `
+            <div style="display:flex; justify-content:space-between; gap:12px; align-items:start; flex-wrap:wrap;">
+              <div style="display:grid; gap:8px;">
+                <strong style="font-size:15px; line-height:1.35;">${node.label}</strong>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">${badges.join("")}</div>
+              </div>
+              <div style="display:grid; justify-items:end; gap:6px;">
+                <span style="font-size:11px; color:var(--color-base-500); white-space:nowrap;">${node.snapshot ? "#" + node.snapshot : "No snapshot"}</span>
+                <span style="font-size:11px; color:var(--color-base-500); white-space:nowrap;">${operationLabel}</span>
+              </div>
+            </div>
+            <div style="margin-top:10px; font-size:11px; color:var(--color-base-500); font-family:ui-monospace, SFMono-Regular, Menlo, monospace; overflow:hidden; text-overflow:ellipsis;">${node.checksum}</div>
+            <div style="margin-top:10px; font-size:13px; line-height:1.55; color:var(--color-base-700); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">${summary}</div>
+          `;
+        });
+      };
+
+      branchFilter.value = "__all__";
+      branchFilter.addEventListener("change", () => render(branchFilter.value));
+      render("__all__");
+    })();
+  </script>
+{% endblock %}
